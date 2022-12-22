@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<body>
+    <div><canvas id="memChart" width="400" height="100"></canvas></div>
+    <div style="height:20px; table-layout:fixed;"></div>
+    <div><canvas id="cpuChart" width="400" height="100"></canvas></div>
+</body>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"
+        integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4="
+        crossorigin="anonymous">
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.min.js"></script>
+<script>
+    window.addEventListener('DOMContentLoaded', function() {
+        var mem = document.getElementById("memChart").getContext("2d");
+        var cpu = document.getElementById("cpuChart").getContext("2d");
+        var json_url = "http://127.0.0.1:7878/metrics";
+
+        function json_data(x_lable, y_lable) {
+            var data = data || {
+            // return {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [ //label: "", data: [], borderColor: '#000',
+                    ],
+                },
+                options: {
+                    animation: {
+                        duration: 0 // アニメーション時間
+                    },
+                    hover: {
+                        animationDuration: 0 // アイテムをホバーした時のアニメーション時間
+                    },
+                    responsiveAnimationDuration: 0, // リサイズ後のアニメーション時間
+                    scales: {
+                        xAxes: [{
+                            scaleLabel: {                // 軸ラベル
+                                display: true,           // 表示設定
+                                labelString: x_lable,    // ラベル
+                            },
+                        }],
+                        yAxes: [{
+                            scaleLabel: {                // 軸ラベル
+                                display: true,           // 表示の有無
+                                labelString: y_lable,    // ラベル
+                            },
+                            ticks: {
+                                beginAtZero: true
+                            }
+                        }]
+                    }
+                }
+            }
+            return data;
+        }
+
+        var memChart = new Chart(mem, json_data('Memory Usage (MiB)', ''));
+        var cpuChart = new Chart(cpu, json_data('Cpu Usage (%)', 'Cpu Status'));
+
+        function ajax_chart(chart_mem, chart_cpu, url) {
+            var data = data || {};
+            $.getJSON(url, data).done(function(response) {
+                var time_label = response.labels;
+                chart_mem.data.labels = time_label;
+                chart_cpu.data.labels = time_label;
+                if (chart_mem.options.scales.yAxes[0].scaleLabel.labelString === '') {
+                    chart_mem.options.scales.yAxes[0].scaleLabel.labelString = response.limit;
+                }
+                for (let i = 0; i < response.datasets.length; i++){
+                    var data_ = response.datasets[i].data ;
+                    var data_cpu = response.datasets[i].data_cpu ;
+                    var container_label = response.datasets[i].label;
+                    var border_color = response.datasets[i].border_color;
+
+                    chart_common_up(chart_mem, data_, container_label, border_color);
+                    chart_common_up(chart_cpu, data_cpu, container_label, border_color);
+
+                    function chart_common_up (chart_t, data_, label_, border_color) {
+                        if (chart_t.data.datasets.some(x => x.label === label_)) {
+                            chart_t.data.datasets.filter(x => x.label === label_)
+                                .forEach(x => {x.data = data_})
+                        } else {
+                            chart_t.data.datasets.push({
+                                label: label_,
+                                data: data_,
+                                borderColor: border_color})
+                        }
+                        chart_t.update()
+                    }
+                }
+            });
+        }
+
+        setInterval(function(){
+            ajax_chart(memChart, cpuChart, json_url)
+        }, 10000);
+    });
+</script>
+</html>
