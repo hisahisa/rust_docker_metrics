@@ -8,7 +8,7 @@ use threadpool::ThreadPool;
 use subprocess::{Popen, PopenConfig, Redirection};
 use serde::Serialize;
 use serde_json;
-use chrono::Local;
+use chrono::{NaiveDateTime, Duration, Local};
 
 const THRESHOLD: usize = 360;
 const THRESHOLD_ELEMENT: usize = 20;
@@ -29,6 +29,7 @@ unsafe fn line_color<'a>() ->&'a str {
 
 #[derive(Serialize, Debug, Clone)]
 struct ResponseParent {
+    label_date_time: VecDeque<String>,
     labels: VecDeque<String>,
     limit: Option<String>,
     datasets: VecDeque<ResponseChild>,
@@ -37,15 +38,17 @@ struct ResponseParent {
 impl ResponseParent {
     fn new () -> ResponseParent {
         ResponseParent{
+            label_date_time: VecDeque::from_iter(vec!["".to_string(); THRESHOLD]),
             labels: VecDeque::from_iter(vec!["".to_string(); THRESHOLD]),
             limit: None,
             datasets: VecDeque::from([])
         }
     }
     fn up(&mut self) {
-        let time_now = Local::now().format( "%H:%M:%S").to_string();
         self.labels.pop_front();
-        self.labels.push_back(time_now.clone());
+        self.labels.push_back(Local::now().format( "%H:%M:%S").to_string());
+        self.label_date_time.pop_front();
+        self.label_date_time.push_back(Local::now().format( "%Y/%m/%d %H:%M:%S").to_string())
     }
 }
 
@@ -109,7 +112,6 @@ impl ResponseChild {
     }
 }
 
-
 fn main() {
     let address = "127.0.0.1:7878";
     let command = "docker stats";
@@ -128,8 +130,8 @@ fn main() {
     pool.execute(move || {
         let mut parent_res = ResponseParent::new();
         let stdout_file = popen.stdout.as_ref().unwrap();
+        let tx = tx.clone();
         for result in BufReader::new(stdout_file).lines() {
-            let tx = tx.clone();
             let result_string = result.unwrap();
             if result_string.starts_with("\u{1b}") {
                 if send_vec.len() > 0 {
@@ -137,6 +139,7 @@ fn main() {
                     let error_message = "channel will be there waiting for the pool";
                     response_object(&mut parent_res, send_vec, &counter);
                     if counter % THRESHOLD_ELEMENT == 0 {
+                        parent_res.up();
                         tx.send(parent_res.clone()).expect(error_message);
                     }
                     send_vec = vec![];  // initialize
@@ -156,15 +159,33 @@ fn main() {
         let metrics = b"GET /metrics HTTP/1.1\r\n";
 
         if buffer.starts_with(metrics) {
-            for my_response in rx.iter().take(1) {
-                // println!("my_response {:?}", my_response);
-                println!("my_response time {:?}", my_response.labels.back().unwrap());
-                let serialized_json = serde_json::to_string(&my_response).unwrap();
-                let json_size = serialized_json.len();
-                let (header_first, header_last) = header_tuple();
-                let response = format!("{}{}{}{}", header_first, json_size,
-                                       header_last, serialized_json);
-                stream.write(response.as_bytes()).unwrap();
+            for mut my_response in rx.iter() {
+
+                fn is_time_range(res: & ResponseParent) -> bool {
+                    let label_dt = res.label_date_time.back().unwrap().as_str();
+                    let fmt_str = "%Y/%m/%d %H:%M:%S";
+                    let ndt = NaiveDateTime::parse_from_str(label_dt, fmt_str).unwrap();
+                    let ndt_now = Local::now().naive_local();
+                    let duration: Duration = ndt_now - ndt;
+                    duration.num_seconds() <= 60  // 遅延 60sec以上はskip
+                }
+
+                if is_time_range(&my_response) {
+                    // println!("my_response  {:?}", my_response);
+                    println!("my_response time {:?}", my_response.labels.back().unwrap());
+                    my_response.label_date_time.clear();
+                    let serialized_json = serde_json::to_string(&my_response).unwrap();
+                    let json_size = serialized_json.len();
+                    let (header_first, header_last) = header_tuple();
+                    let response = format!("{}{}{}{}", header_first, json_size,
+                                           header_last, serialized_json);
+                    stream.write(response.as_bytes()).unwrap();
+                    break;
+                } else {
+                    println!("skipping my_response  {:?}", my_response);
+                    continue;
+                }
+
             }
         } else {
             let mut file = File::open("chart.html").unwrap();
@@ -191,9 +212,8 @@ fn response_object<'a>(parent_res: &mut ResponseParent, metrics_vec: Vec<String>
         parent_res.datasets.iter_mut()
             .for_each(|i| i.init(None, None));
         if counter % THRESHOLD_ELEMENT == 0 {
-            // すげえてきとーな組み方
             parent_res.datasets.iter_mut().for_each(|i| i.up_none());
-            parent_res.up();
+            // parent_res.up();
         }
     }
 
@@ -206,16 +226,12 @@ fn response_object<'a>(parent_res: &mut ResponseParent, metrics_vec: Vec<String>
         let cpu: Option<(_, _)> =  metrics_data_map.get_key_value(&&"CPU %");
         let (_, cpu_v) = cpu.unwrap_or((&&"", &&"0"));
         let cpu_value: &str = &cpu_v[..cpu_v.len()-1];
-        // println!("cpu = {:?} {:?}", cpu_k, cpu_value);
 
         let mem: Option<(_, _)> =  metrics_data_map.get_key_value(&&"MEM USAGE / LIMIT");
         let (mem_k, mem_v) = mem.unwrap_or((&&"", &&""));
-        // println!("mem = {:?} {:?}", mem_k, mem_v);
 
         let mem_key_vec: Vec<&str> = mem_k.split("/").into_iter().map(|x| x.trim()).collect();
         let mem_value_vec: Vec<&str> = mem_v.split("/").into_iter().map(|x| x.trim()).collect();
-        // println!("mem_key_vec   = {:?}", mem_key_vec);
-        // println!("mem_value_vec = {:?}", mem_value_vec);
 
         let val = mem_value_vec.iter().any(|&m|  UNIT.iter().any(|&k| m.contains(&k)));
         if !val {
