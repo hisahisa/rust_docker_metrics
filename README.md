@@ -1,19 +1,16 @@
 # rust_docker_metrics
 
+- メトリクスを意識したバッチ作成をすべきと考えメトリクスの記録を横軸で残したいというモチベで作成した。
+
 ## ビルドと起動方法
 
 - 以下のコマンドを叩いてビルド&起動する(dockerが動作していることが前提)
 
 ```asm
-yogo-MacBook:rust_metrics $ cargo build
-Compiling rust_metrics v0.1.0 (/Users/CLionProjects/rust_metrics)
-Finished dev [unoptimized + debuginfo] target(s) in 16.26s
-
-yogo-MacBook:rust_metrics $ ls -al target/debug/rust_metrics
--rwxr-xr-x  1  staff  3415664 Mar  5 13:48 target/debug/rust_metrics
-
-yogo-MacBook:rust_metrics $ chmod +x target/debug/rust_metrics
-yogo-MacBook:rust_metrics $ ./target/debug/rust_metrics
+$ cargo build
+$ ls -al target/debug/rust_metrics    # ファイルの存在確認
+$ chmod +x target/debug/rust_metrics  # 権限付与
+$ ./target/debug/rust_metrics      
 ```
 
 - 以下のurlでアクセス
