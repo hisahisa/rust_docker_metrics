@@ -19,7 +19,8 @@ $ ./target/debug/rust_metrics
   - 10秒間隔でdocker上で動作するメトリクスを表示します。(10秒間で記録したmax値を表示)
   - 360point x 10秒間隔で値を取得してグラフ表示するので1時間分の動作状況を表示します。
 
-  - ![](../../Desktop/rust_metrics2.gif)
+  - ![rust_metrics2](https://user-images.githubusercontent.com/28680167/224271658-a41ae174-c4ce-43b0-a965-5f89e9f30ce6.gif)
+
 
 ## 課題
   - 一旦初回作品なので、まずは動くものをということを目標に作りました。課題としてい以下があげれれるかと思っています。
